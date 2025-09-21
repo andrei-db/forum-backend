@@ -15,7 +15,10 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 app.use(cors({
-    origin: "http://localhost:5173",
+    origin: [
+    "http://localhost:5173", 
+    "https://forum-frontend-three.vercel.app/"
+  ],
     credentials: true,
 }));
 app.get("/test", (_req, res) => {
@@ -31,8 +34,8 @@ app.use("/posts", postRoutes);
 mongoose.connect(process.env.MONGO_URI)
     .then(() => {
         console.log("Connected to MongoDB");
-        app.listen(process.env.PORT, () => {
-            console.log(`Server running at http://localhost:${process.env.PORT}`);
+        app.listen(process.env.PORT || 4000, () => {
+            console.log(`Server running`);
         });
     })
     .catch(err => console.error("DB connection error:", err.message));
