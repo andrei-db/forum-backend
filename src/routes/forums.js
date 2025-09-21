@@ -1,20 +1,31 @@
 import { Router } from "express";
 import Forum from "../models/Forum.js";
+import Topic from "../models/Topic.js";
 import { authRequired } from "../middleware/auth.js";
 
 const router = Router();
 
-router.get("/category/:categoryId", async (req, res) => {
+router.get("/:id/topics", async (req, res) => {
   try {
-    const forums = await Forum.find({ category: req.params.categoryId }).sort({ order: 1 });
-    res.json(forums);
+    const topics = await Topic.find({ forum: req.params.id })
+      .populate("author", "username")
+      .sort({ createdAt: -1 });
+    res.json(topics);
   } catch (err) {
-    console.error("Error fetching forums:", err);
+    console.error("Error fetching topics:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
-
-
+router.get("/:id", async (req, res) => {
+  try {
+    const forum = await Forum.findById(req.params.id);
+    if (!forum) return res.status(404).json({ error: "Forum not found" });
+    res.json(forum);
+  } catch (err) {
+    console.error("Error fetching forum:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 router.post("/", authRequired, async (req, res) => {
   if (req.user.role !== "admin") {
     return res.status(403).json({ error: "Forbidden" });

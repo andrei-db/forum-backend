@@ -8,6 +8,9 @@ import meRoutes from "./routes/me.js";
 import categoryRoutes from "./routes/categories.js";
 import forumRoutes from "./routes/forums.js";
 import cors from 'cors'
+import topicRoutes from "./routes/topics.js";
+import postRoutes from "./routes/posts.js";
+
 dotenv.config();
 const app = express();
 app.use(express.json());
@@ -23,6 +26,8 @@ app.use("/auth", authRoutes);
 app.use("/me", meRoutes);
 app.use("/categories", categoryRoutes);
 app.use("/forums", forumRoutes);
+app.use("/topics", topicRoutes);
+app.use("/posts", postRoutes);
 mongoose.connect(process.env.MONGO_URI)
     .then(() => {
         console.log("Connected to MongoDB");
