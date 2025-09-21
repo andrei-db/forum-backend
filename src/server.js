@@ -17,7 +17,7 @@ app.use(express.json());
 app.use(cors({
     origin: [
     "http://localhost:5173", 
-    "https://forum-frontend-three.vercel.app/"
+    "https://forum-frontend-three.vercel.app"
   ],
     credentials: true,
 }));
