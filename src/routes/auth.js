@@ -2,8 +2,37 @@ import { Router } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import { authRequired } from "../middleware/auth.js";
 
 const router = Router();
+router.post("/change-password", authRequired, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "All fields are required." });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      return res.status(400).json({ error: "Current password is incorrect." });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.passwordHash = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    res.json({ message: "Password updated successfully ✅" });
+  } catch (err) {
+    console.error("Error changing password:", err);
+    res.status(500).json({ error: "Server error." });
+  }
+});
 
 router.post("/register", async (req, res) => {
   try {
@@ -24,7 +53,7 @@ router.post("/register", async (req, res) => {
   }
 });
 router.post("/login", async (req, res) => {
-  const { identifier, password } = req.body; 
+  const { identifier, password } = req.body;
 
   const user = await User.findOne({
     $or: [{ email: identifier }, { username: identifier }],
