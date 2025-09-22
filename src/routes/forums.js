@@ -4,32 +4,58 @@ import Topic from "../models/Topic.js";
 import { authRequired } from "../middleware/auth.js";
 import Post from "../models/Post.js";
 const router = Router();
+
+router.get("/:id/topics-with-last-reply", async (req, res) => {
+    try {
+        const topics = await Topic.find({ forum: req.params.id })
+            .populate("author", "username role")
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const topicsWithLastReply = await Promise.all(
+            topics.map(async (topic) => {
+                const lastReply = await Post.findOne({ topic: topic._id })
+                    .populate("author", "username role")
+                    .sort({ createdAt: -1 })
+                    .lean();
+
+                return { ...topic, lastReply };
+            })
+        );
+
+        res.json(topicsWithLastReply);
+    } catch (err) {
+        console.error("Error fetching topics with last reply:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
 router.get("/messages-count", async (req, res) => {
-  try {
-    const counts = await Post.aggregate([
-      {
-        $lookup: {
-          from: "topics",
-          localField: "topic",
-          foreignField: "_id",
-          as: "topic"
-        }
-      },
-      { $unwind: "$topic" },
+    try {
+        const counts = await Post.aggregate([
+            {
+                $lookup: {
+                    from: "topics",
+                    localField: "topic",
+                    foreignField: "_id",
+                    as: "topic"
+                }
+            },
+            { $unwind: "$topic" },
 
-      {
-        $group: {
-          _id: "$topic.forum",    
-          messagesCount: { $sum: 1 }  
-        }
-      }
-    ]);
+            {
+                $group: {
+                    _id: "$topic.forum",
+                    messagesCount: { $sum: 1 }
+                }
+            }
+        ]);
 
-    res.json(counts);
-  } catch (err) {
-    console.error("Error counting messages:", err);
-    res.status(500).json({ error: "Server error" });
-  }
+        res.json(counts);
+    } catch (err) {
+        console.error("Error counting messages:", err);
+        res.status(500).json({ error: "Server error" });
+    }
 });
 router.get("/latest-posts", async (req, res) => {
     try {
