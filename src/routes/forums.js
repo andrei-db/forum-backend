@@ -6,28 +6,31 @@ import Post from "../models/Post.js";
 const router = Router();
 
 router.get("/:id/topics-with-last-reply", async (req, res) => {
-    try {
-        const topics = await Topic.find({ forum: req.params.id })
-            .populate("author", "username role")
-            .sort({ createdAt: -1 })
-            .lean();
+  try {
+    const topics = await Topic.find({ forum: req.params.id })
+      .populate("author", "username role")
+      .sort({ createdAt: -1 })
+      .lean();
 
-        const topicsWithLastReply = await Promise.all(
-            topics.map(async (topic) => {
-                const lastReply = await Post.findOne({ topic: topic._id })
-                    .populate("author", "username role")
-                    .sort({ createdAt: -1 })
-                    .lean();
+    const topicsWithData = await Promise.all(
+      topics.map(async (topic) => {
+        const lastReply = await Post.findOne({ topic: topic._id })
+          .populate("author", "username role")
+          .sort({ createdAt: -1 })
+          .lean();
 
-                return { ...topic, lastReply };
-            })
-        );
+        const totalPosts = await Post.countDocuments({ topic: topic._id });
+        const replies = totalPosts > 0 ? totalPosts - 1 : 0;
 
-        res.json(topicsWithLastReply);
-    } catch (err) {
-        console.error("Error fetching topics with last reply:", err);
-        res.status(500).json({ error: "Server error" });
-    }
+        return { ...topic, lastReply, replies };
+      })
+    );
+
+    res.json(topicsWithData);
+  } catch (err) {
+    console.error("Error fetching topics with last reply:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 router.get("/messages-count", async (req, res) => {

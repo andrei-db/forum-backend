@@ -4,6 +4,7 @@ import Post from "../models/Post.js";
 import { authRequired } from "../middleware/auth.js";
 
 const router = Router();
+
 router.get("/recent", async (req, res) => {
     try {
         const topics = await Topic.find()
