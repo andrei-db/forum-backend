@@ -4,7 +4,33 @@ import Topic from "../models/Topic.js";
 import { authRequired } from "../middleware/auth.js";
 import Post from "../models/Post.js";
 const router = Router();
+router.get("/messages-count", async (req, res) => {
+  try {
+    const counts = await Post.aggregate([
+      {
+        $lookup: {
+          from: "topics",
+          localField: "topic",
+          foreignField: "_id",
+          as: "topic"
+        }
+      },
+      { $unwind: "$topic" },
 
+      {
+        $group: {
+          _id: "$topic.forum",    
+          messagesCount: { $sum: 1 }  
+        }
+      }
+    ]);
+
+    res.json(counts);
+  } catch (err) {
+    console.error("Error counting messages:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 router.get("/latest-posts", async (req, res) => {
     try {
         const forums = await Forum.find().lean();
