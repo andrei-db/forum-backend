@@ -8,7 +8,7 @@ const router = Router();
 router.get("/recent", async (req, res) => {
     try {
         const topics = await Topic.find()
-            .populate("author", "username role")
+            .populate("author", "username role profilePicture")
             .sort({ createdAt: -1 })
             .limit(4);
 
@@ -21,7 +21,7 @@ router.get("/recent", async (req, res) => {
 router.get("/:id", async (req, res) => {
     try {
         const topic = await Topic.findById(req.params.id)
-            .populate("author", "username role")
+            .populate("author", "username role profilePicture")
             .lean();
 
         if (!topic) {
@@ -29,7 +29,7 @@ router.get("/:id", async (req, res) => {
         }
 
         const posts = await Post.find({ topic: topic._id })
-            .populate("author", "username role")
+            .populate("author", "username role profilePicture")
             .sort({ createdAt: 1 });
 
         res.json({ ...topic, posts });

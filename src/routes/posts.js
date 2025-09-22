@@ -18,7 +18,7 @@ router.post("/", authRequired, async (req, res) => {
       author: req.user.id,
     });
 
-    await post.populate("author", "username role");
+    await post.populate("author", "username role profilePicture");
 
     res.status(201).json(post);
   } catch (err) {
@@ -39,7 +39,7 @@ router.put("/:id", authRequired, async (req, res) => {
     post.content = req.body.content || post.content;
     await post.save();
 
-    await post.populate("author", "username role");
+    await post.populate("author", "username role profilePicture");
     res.json(post);
   } catch (err) {
     console.error("Error editing post:", err);

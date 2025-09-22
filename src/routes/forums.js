@@ -8,14 +8,14 @@ const router = Router();
 router.get("/:id/topics-with-last-reply", async (req, res) => {
   try {
     const topics = await Topic.find({ forum: req.params.id })
-      .populate("author", "username role")
+      .populate("author", "username role profilePicture")
       .sort({ createdAt: -1 })
       .lean();
 
     const topicsWithData = await Promise.all(
       topics.map(async (topic) => {
         const lastReply = await Post.findOne({ topic: topic._id })
-          .populate("author", "username role")
+          .populate("author", "username role profilePicture")
           .sort({ createdAt: -1 })
           .lean();
 
@@ -75,7 +75,7 @@ router.get("/latest-posts", async (req, res) => {
                 }
 
                 const post = await Post.findOne({ topic: topic._id })
-                    .populate("author", "username role")
+                    .populate("author", "username role profilePicture")
                     .sort({ createdAt: -1 })
                     .lean();
 
@@ -104,7 +104,7 @@ router.get("/latest-posts", async (req, res) => {
 router.get("/:id/topics", async (req, res) => {
     try {
         const topics = await Topic.find({ forum: req.params.id })
-            .populate("author", "username role")
+            .populate("author", "username role profilePicture")
             .sort({ createdAt: -1 });
         res.json(topics);
     } catch (err) {
