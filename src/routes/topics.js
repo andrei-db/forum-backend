@@ -5,6 +5,16 @@ import { authRequired } from "../middleware/auth.js";
 
 const router = Router();
 
+router.get("/count", async (req, res) => {
+  try {
+    const count = await Topic.countDocuments();
+    res.json({ count });
+  } catch (err) {
+    console.error("Error counting topics:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 router.get("/recent", async (req, res) => {
     try {
         const topics = await Topic.find()

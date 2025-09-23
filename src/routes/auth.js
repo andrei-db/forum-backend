@@ -5,6 +5,31 @@ import User from "../models/User.js";
 import { authRequired } from "../middleware/auth.js";
 
 const router = Router();
+router.get("/latest", async (req, res) => {
+  try {
+    const latestUser = await User.findOne()
+      .sort({ createdAt: -1 })
+      .select("username role profilePicture createdAt");
+
+    if (!latestUser) {
+      return res.status(404).json({ error: "No users found" });
+    }
+
+    res.json(latestUser);
+  } catch (err) {
+    console.error("Error fetching latest user:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+router.get("/count", async (req, res) => {
+  try {
+    const count = await User.countDocuments();
+    res.json({ count });
+  } catch (err) {
+    console.error("Error counting users:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 router.post("/change-password", authRequired, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;

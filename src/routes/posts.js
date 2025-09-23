@@ -4,6 +4,15 @@ import { authRequired } from "../middleware/auth.js";
 
 const router = Router();
 
+router.get("/count", async (req, res) => {
+  try {
+    const count = await Post.countDocuments();
+    res.json({ count });
+  } catch (err) {
+    console.error("Error counting posts:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 router.post("/", authRequired, async (req, res) => {
   try {
     const { topic, content } = req.body;
