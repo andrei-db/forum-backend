@@ -9,7 +9,7 @@ router.get("/:id/topics-with-last-reply", async (req, res) => {
   try {
     const topics = await Topic.find({ forum: req.params.id })
       .populate("author", "username role profilePicture")
-      .sort({ createdAt: -1 })
+      .sort({ sticky:-1, createdAt: -1 })
       .lean();
 
     const topicsWithData = await Promise.all(
@@ -105,7 +105,7 @@ router.get("/:id/topics", async (req, res) => {
     try {
         const topics = await Topic.find({ forum: req.params.id })
             .populate("author", "username role profilePicture")
-            .sort({ createdAt: -1 });
+            .sort({ sticky:-1, createdAt: -1 });
         res.json(topics);
     } catch (err) {
         console.error("Error fetching topics:", err);
