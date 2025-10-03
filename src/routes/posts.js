@@ -1,9 +1,41 @@
 import { Router } from "express";
 import Post from "../models/Post.js";
 import { authRequired } from "../middleware/auth.js";
-
+import User from "../models/User.js";
 const router = Router();
+router.get("/top", async (req, res) => {
+  try {
+    const stats = await Post.aggregate([
+      { $group: { _id: "$author", posts: { $sum: 1 } } },
+      { $sort: { posts: -1 } },
+      { $limit: 5 },
+    ]);
 
+    const users = await User.populate(stats, { path: "_id", select: "username profilePicture role" });
+
+    res.json(users.map(u => ({
+      user: u._id,
+      posts: u.posts
+    })));
+  } catch (err) {
+    console.error("Error building leaderboard:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+router.get("/recent", async (req, res) => {
+    try {
+        const posts = await Post.find()
+            .populate("author", "username role profilePicture")
+            .populate("topic", "title")
+            .sort({ createdAt: -1 })
+            .limit(4);
+
+        res.json(posts);
+    } catch (err) {
+        console.error("Error fetching recent posts:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
 router.get("/count", async (req, res) => {
   try {
     const count = await Post.countDocuments();

@@ -39,7 +39,7 @@ router.get("/:id", async (req, res) => {
         }
 
         const posts = await Post.find({ topic: topic._id })
-            .populate("author", "username role profilePicture")
+            .populate("author", "username role profilePicture createdAt")
             .sort({ createdAt: 1 });
 
         res.json({ ...topic, posts });
