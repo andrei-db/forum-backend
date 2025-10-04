@@ -4,6 +4,32 @@ import Post from "../models/Post.js";
 import { authRequired } from "../middleware/auth.js";
 
 const router = Router();
+router.patch("/:id/sticky", async (req, res) => {
+  try {
+    const topic = await Topic.findById(req.params.id);
+    if (!topic) return res.status(404).json({ error: "Topic not found" });
+
+    topic.sticky = !topic.sticky;
+    await topic.save();
+
+    res.json({ message: `Topic is now ${topic.sticky ? "sticky" : "normal"}`, topic });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+router.patch("/:id/closed", async (req, res) => {
+  try {
+    const topic = await Topic.findById(req.params.id);
+    if (!topic) return res.status(404).json({ error: "Topic not found" });
+
+    topic.closed = !topic.closed;
+    await topic.save();
+
+    res.json({ message: `Topic is now ${topic.closed ? "closed" : "open"}`, topic });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 router.get("/count", async (req, res) => {
   try {
