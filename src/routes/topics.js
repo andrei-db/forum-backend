@@ -4,7 +4,7 @@ import Post from "../models/Post.js";
 import { authRequired } from "../middleware/auth.js";
 
 const router = Router();
-router.patch("/:id/sticky", async (req, res) => {
+router.patch("/:id/sticky",authRequired, async (req, res) => {
   try {
     const topic = await Topic.findById(req.params.id);
     if (!topic) return res.status(404).json({ error: "Topic not found" });
@@ -17,7 +17,7 @@ router.patch("/:id/sticky", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-router.patch("/:id/closed", async (req, res) => {
+router.patch("/:id/closed",authRequired, async (req, res) => {
   try {
     const topic = await Topic.findById(req.params.id);
     if (!topic) return res.status(404).json({ error: "Topic not found" });
