@@ -57,6 +57,33 @@ router.post("/", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+router.patch("/reorder", authRequired, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  try {
+    const { categories } = req.body;
+
+    if (!Array.isArray(categories)) {
+      return res.status(400).json({ error: "Invalid categories order" });
+    }
+
+    await prisma.$transaction(
+      categories.map((category, index) =>
+        prisma.category.update({
+          where: { id: category.id },
+          data: { order: index },
+        })
+      )
+    );
+
+    res.json({ message: "Categories reordered" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 router.delete("/:id", async (req, res) => {
   try {
     await prisma.category.delete({
@@ -116,4 +143,5 @@ router.patch("/:id", authRequired, async (req, res) => {
     res.status(500).json({ error: err.message || "Server error" });
   }
 });
+
 export default router;

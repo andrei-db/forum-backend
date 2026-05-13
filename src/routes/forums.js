@@ -3,7 +3,33 @@ import { prisma } from "../db/prisma.js";
 import { authRequired } from "../middleware/auth.js";
 
 const router = Router();
+router.patch("/reorder", authRequired, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
 
+  try {
+    const { forums } = req.body;
+
+    if (!Array.isArray(forums)) {
+      return res.status(400).json({ error: "Invalid forums order" });
+    }
+
+    await prisma.$transaction(
+      forums.map((forum, index) =>
+        prisma.forum.update({
+          where: { id: forum.id },
+          data: { order: index },
+        })
+      )
+    );
+
+    res.json({ message: "Forums reordered" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 router.get("/:id/topics-with-last-reply", async (req, res) => {
     try {
         const topics = await prisma.topic.findMany({
