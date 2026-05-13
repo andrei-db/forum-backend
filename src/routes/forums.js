@@ -193,9 +193,7 @@ router.get("/:id/topics", async (req, res) => {
 router.get("/:id", async (req, res) => {
     try {
         const forum = await prisma.forum.findUnique({
-            where: {
-                id: req.params.id,
-            },
+            where: { id: req.params.id },
         });
 
         if (!forum) {
@@ -204,7 +202,6 @@ router.get("/:id", async (req, res) => {
 
         res.json(forum);
     } catch (err) {
-        console.error("Error fetching forum:", err);
         res.status(500).json({ error: "Server error" });
     }
 });
@@ -293,5 +290,40 @@ router.delete("/:id", authRequired, async (req, res) => {
         res.status(500).json({ error: "Server error" });
     }
 });
+router.patch("/:id", authRequired, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
 
+  try {
+    const { name, description, categoryId, type, redirectUrl, order } = req.body;
+
+    if (!name?.trim()) {
+      return res.status(400).json({ error: "Forum name is required" });
+    }
+
+    if (!categoryId) {
+      return res.status(400).json({ error: "Category is required" });
+    }
+
+    if (type === "redirect" && !redirectUrl?.trim()) {
+      return res.status(400).json({ error: "Redirect URL is required" });
+    }
+
+    const forum = await prisma.forum.update({
+      where: { id: req.params.id },
+      data: {
+        name: name.trim(),
+        description: description?.trim() || null,
+        categoryId,
+        type: type || "discussion",
+        redirectUrl: type === "redirect" ? redirectUrl.trim() : null
+      },
+    });
+
+    res.json(forum);
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Server error" });
+  }
+});
 export default router;

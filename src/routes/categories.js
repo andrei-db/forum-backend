@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma.js";
-
+import { authRequired } from "../middleware/auth.js";
 const router = Router();
 
 router.get("/", async (req, res) => {
@@ -73,6 +73,47 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({
       error: "Server error",
     });
+  }
+});
+router.get("/:id", async (req, res) => {
+  try {
+    const category = await prisma.category.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!category) {
+      return res.status(404).json({ error: "Category not found" });
+    }
+
+    res.json(category);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+router.patch("/:id", authRequired, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  try {
+    const { name, description, order } = req.body;
+
+    if (!name?.trim()) {
+      return res.status(400).json({ error: "Category name is required" });
+    }
+
+    const category = await prisma.category.update({
+      where: { id: req.params.id },
+      data: {
+        name: name.trim(),
+        description: description?.trim() || null,
+        order: Number(order) || 0,
+      },
+    });
+
+    res.json(category);
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Server error" });
   }
 });
 export default router;
