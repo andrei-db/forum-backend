@@ -89,42 +89,69 @@ router.get("/count", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-
 router.post("/", authRequired, async (req, res) => {
   try {
     const { topic, topicId, content } = req.body;
 
     const finalTopicId = topicId || topic;
+    const cleanContent = content?.trim();
 
-    if (!finalTopicId || !content) {
+    if (!finalTopicId || !cleanContent) {
       return res.status(400).json({ error: "Missing fields" });
     }
 
-    const post = await prisma.post.create({
-      data: {
-        topicId: finalTopicId,
-        content,
-        authorId: req.user.id,
-      },
-      include: {
-        author: {
-          select: {
-            id: true,
-            username: true,
-            role: true,
-            profilePicture: true,
+    const result = await prisma.$transaction(async (tx) => {
+      const existingTopic = await tx.topic.findUnique({
+        where: { id: finalTopicId },
+      });
+
+      if (!existingTopic) {
+        throw new Error("Topic not found");
+      }
+
+      if (existingTopic.closed) {
+        throw new Error("Topic is closed");
+      }
+
+      const post = await tx.post.create({
+        data: {
+          topicId: finalTopicId,
+          content: cleanContent,
+          authorId: req.user.id,
+        },
+        include: {
+          author: {
+            select: {
+              id: true,
+              username: true,
+              role: true,
+              profilePicture: true,
+              createdAt: true,
+            },
+          },
+          topic: {
+            select: {
+              id: true,
+              title: true,
+            },
           },
         },
-        topic: {
-          select: {
-            id: true,
-            title: true,
+      });
+
+      await tx.topic.update({
+        where: { id: finalTopicId },
+        data: {
+          postsCount: {
+            increment: 1,
           },
+          lastPostId: post.id,
         },
-      },
+      });
+
+      return post;
     });
 
-    res.status(201).json(post);
+    res.status(201).json(result);
   } catch (err) {
     console.error("Error creating post:", err);
     res.status(400).json({ error: err.message });
@@ -178,12 +205,12 @@ router.put("/:id", authRequired, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-
 router.delete("/:id", authRequired, async (req, res) => {
   try {
     const post = await prisma.post.findUnique({
-      where: {
-        id: req.params.id,
+      where: { id: req.params.id },
+      include: {
+        topic: true,
       },
     });
 
@@ -191,21 +218,47 @@ router.delete("/:id", authRequired, async (req, res) => {
       return res.status(404).json({ error: "Post not found" });
     }
 
-    if (post.authorId !== req.user.id && req.user.role !== "admin") {
-      return res.status(403).json({ error: "Forbidden" });
+    if (post.topic.firstPostId === post.id) {
+      return res.status(400).json({
+        error: "First post cannot be deleted. Delete the topic instead.",
+      });
     }
 
-    await prisma.post.delete({
-      where: {
-        id: req.params.id,
-      },
+    if (req.user.role !== "admin" && req.user.id !== post.authorId) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.post.delete({
+        where: { id: req.params.id },
+      });
+
+      const lastPost = await tx.post.findFirst({
+        where: {
+          topicId: post.topicId,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+
+      await tx.topic.update({
+        where: {
+          id: post.topicId,
+        },
+        data: {
+          postsCount: {
+            decrement: 1,
+          },
+          lastPostId: lastPost?.id || post.topic.firstPostId,
+        },
+      });
     });
 
-    res.json({ success: true });
+    res.json({ message: "Post deleted" });
   } catch (err) {
-    console.error("Error deleting post:", err);
+    console.error("Delete post error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
-
 export default router;

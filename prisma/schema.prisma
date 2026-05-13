@@ -60,7 +60,6 @@ model Forum {
 
   @@index([categoryId])
 }
-
 model Topic {
   id        String   @id @default(uuid())
   title     String
@@ -75,17 +74,26 @@ model Topic {
   authorId String
   author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
+  postsCount  Int     @default(0)
+  firstPostId String? @unique
+  lastPostId String? @unique
+
   posts Post[]
+
+  firstPost Post? @relation("TopicFirstPost", fields: [firstPostId], references: [id], onDelete: SetNull)
+  lastPost  Post? @relation("TopicLastPost", fields: [lastPostId], references: [id], onDelete: SetNull)
 
   @@index([forumId])
   @@index([authorId])
   @@index([createdAt])
+  @@index([firstPostId])
+  @@index([lastPostId])
 }
-
 model Post {
   id        String   @id @default(uuid())
   content   String
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   topicId String
   topic   Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
@@ -93,11 +101,13 @@ model Post {
   authorId String
   author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
+  firstForTopic Topic? @relation("TopicFirstPost")
+  lastForTopic  Topic? @relation("TopicLastPost")
+
   @@index([topicId])
   @@index([authorId])
   @@index([createdAt])
 }
-
 model Session {
   id         String   @id @default(uuid())
   sessionId  String   @unique

@@ -139,43 +139,67 @@ router.get("/:id", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-
 router.post("/", authRequired, async (req, res) => {
   try {
     const { forum, forumId, title, content } = req.body;
 
     const finalForumId = forumId || forum;
+    const cleanTitle = title?.trim();
+    const cleanContent = content?.trim();
 
-    if (!finalForumId || !title || !content) {
-      return res.status(400).json({ error: "Missing fields" });
+    if (!finalForumId || !cleanTitle || !cleanContent || !req.user?.id) {
+      return res.status(400).json({
+        error: "Missing fields",
+        debug: {
+          finalForumId,
+          title,
+          content,
+          userId: req.user?.id,
+        },
+      });
     }
 
-    const topic = await prisma.topic.create({
-      data: {
-        forumId: finalForumId,
-        title,
-        authorId: req.user.id,
-        posts: {
-          create: {
-            content,
-            authorId: req.user.id,
-          },
+    const result = await prisma.$transaction(async (tx) => {
+      const topic = await tx.topic.create({
+        data: {
+          forumId: finalForumId,
+          title: cleanTitle,
+          authorId: req.user.id,
         },
-      },
-      include: {
-        author: {
-          select: {
-            id: true,
-            username: true,
-            role: true,
-            profilePicture: true,
-          },
+      });
+
+      const firstPost = await tx.post.create({
+        data: {
+          topicId: topic.id,
+          content: cleanContent,
+          authorId: req.user.id,
         },
-        posts: true,
-      },
+      });
+
+      return await tx.topic.update({
+        where: { id: topic.id },
+        data: {
+          firstPostId: firstPost.id,
+          lastPostId: firstPost.id,
+          postsCount: 1,
+        },
+        include: {
+          author: {
+            select: {
+              id: true,
+              username: true,
+              role: true,
+              profilePicture: true,
+            },
+          },
+          posts: true,
+          firstPost: true,
+          lastPost: true,
+        },
+      });
     });
 
-    res.status(201).json(topic);
+    res.status(201).json(result);
   } catch (err) {
     console.error("Error creating topic:", err);
     res.status(400).json({ error: err.message });
