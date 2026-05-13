@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { authRequired } from "../middleware/auth.js";
-import User from "../models/User.js";
-import { storage, cloudinary } from "../config/cloudinary.js";
+import { prisma } from "../db/prisma.js";
+import { storage } from "../config/cloudinary.js";
 import multer from "multer";
+
 const router = Router();
 const upload = multer({ storage });
 
@@ -12,11 +13,22 @@ router.post("/profile-picture", authRequired, upload.single("image"), async (req
       return res.status(400).json({ error: "No image uploaded" });
     }
 
-    const user = await User.findByIdAndUpdate(
-      req.user.id,
-      { profilePicture: req.file.path },
-      { new: true }
-    );
+    const user = await prisma.user.update({
+      where: {
+        id: req.user.id,
+      },
+      data: {
+        profilePicture: req.file.path,
+      },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        role: true,
+        profilePicture: true,
+        createdAt: true,
+      },
+    });
 
     res.json({ message: "Profile picture updated", user });
   } catch (err) {
@@ -24,9 +36,32 @@ router.post("/profile-picture", authRequired, upload.single("image"), async (req
     res.status(500).json({ error: "Server error" });
   }
 });
+
 router.get("/", authRequired, async (req, res) => {
-  const me = await User.findById(req.user.id).select("_id username email role profilePicture createdAt");
-  res.json(me);
+  try {
+    const me = await prisma.user.findUnique({
+      where: {
+        id: req.user.id,
+      },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        role: true,
+        profilePicture: true,
+        createdAt: true,
+      },
+    });
+
+    if (!me) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json(me);
+  } catch (err) {
+    console.error("Me error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 export default router;

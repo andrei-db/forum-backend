@@ -1,92 +1,152 @@
 import { Router } from "express";
-import Forum from "../models/Forum.js";
-import Topic from "../models/Topic.js";
+import { prisma } from "../db/prisma.js";
 import { authRequired } from "../middleware/auth.js";
-import Post from "../models/Post.js";
+
 const router = Router();
 
 router.get("/:id/topics-with-last-reply", async (req, res) => {
-  try {
-    const topics = await Topic.find({ forum: req.params.id })
-      .populate("author", "username role profilePicture")
-      .sort({ sticky:-1, createdAt: -1 })
-      .lean();
+    try {
+        const topics = await prisma.topic.findMany({
+            where: {
+                forumId: req.params.id,
+            },
+            orderBy: [
+                { sticky: "desc" },
+                { createdAt: "desc" },
+            ],
+            include: {
+                author: {
+                    select: {
+                        id: true,
+                        username: true,
+                        role: true,
+                        profilePicture: true,
+                    },
+                },
+                posts: {
+                    orderBy: {
+                        createdAt: "desc",
+                    },
+                    take: 1,
+                    include: {
+                        author: {
+                            select: {
+                                id: true,
+                                username: true,
+                                role: true,
+                                profilePicture: true,
+                            },
+                        },
+                    },
+                },
+                _count: {
+                    select: {
+                        posts: true,
+                    },
+                },
+            },
+        });
 
-    const topicsWithData = await Promise.all(
-      topics.map(async (topic) => {
-        const lastReply = await Post.findOne({ topic: topic._id })
-          .populate("author", "username role profilePicture")
-          .sort({ createdAt: -1 })
-          .lean();
+        const topicsWithData = topics.map((topic) => {
+            const { posts, _count, ...rest } = topic;
 
-        const totalPosts = await Post.countDocuments({ topic: topic._id });
-        const replies = totalPosts > 0 ? totalPosts - 1 : 0;
+            return {
+                ...rest,
+                lastReply: posts[0] || null,
+                replies: _count.posts > 0 ? _count.posts - 1 : 0,
+            };
+        });
 
-        return { ...topic, lastReply, replies };
-      })
-    );
-
-    res.json(topicsWithData);
-  } catch (err) {
-    console.error("Error fetching topics with last reply:", err);
-    res.status(500).json({ error: "Server error" });
-  }
+        res.json(topicsWithData);
+    } catch (err) {
+        console.error("Error fetching topics with last reply:", err);
+        res.status(500).json({ error: "Server error" });
+    }
 });
 
 router.get("/messages-count", async (req, res) => {
     try {
-        const counts = await Post.aggregate([
-            {
-                $lookup: {
-                    from: "topics",
-                    localField: "topic",
-                    foreignField: "_id",
-                    as: "topic"
-                }
+        const counts = await prisma.post.groupBy({
+            by: ["topicId"],
+            _count: {
+                id: true,
             },
-            { $unwind: "$topic" },
+        });
 
-            {
-                $group: {
-                    _id: "$topic.forum",
-                    messagesCount: { $sum: 1 }
-                }
-            }
-        ]);
+        const topics = await prisma.topic.findMany({
+            select: {
+                id: true,
+                forumId: true,
+            },
+        });
 
-        res.json(counts);
+        const topicToForum = new Map(topics.map((topic) => [topic.id, topic.forumId]));
+
+        const forumCounts = {};
+
+        counts.forEach((item) => {
+            const forumId = topicToForum.get(item.topicId);
+            if (!forumId) return;
+
+            forumCounts[forumId] = (forumCounts[forumId] || 0) + item._count.id;
+        });
+
+        const result = Object.entries(forumCounts).map(([forumId, messagesCount]) => ({
+            id: forumId,
+            messagesCount,
+        }));
+
+        res.json(result);
     } catch (err) {
         console.error("Error counting messages:", err);
         res.status(500).json({ error: "Server error" });
     }
 });
+
 router.get("/latest-posts", async (req, res) => {
     try {
-        const forums = await Forum.find().lean();
+        const forums = await prisma.forum.findMany();
 
         const results = await Promise.all(
             forums.map(async (forum) => {
-                const topic = await Topic.findOne({ forum: forum._id })
-                    .sort({ createdAt: -1 })
-                    .lean();
-
-                if (!topic) {
-                    return { forum, lastPost: null };
-                }
-
-                const post = await Post.findOne({ topic: topic._id })
-                    .populate("author", "username role profilePicture")
-                    .sort({ createdAt: -1 })
-                    .lean();
+                const post = await prisma.post.findFirst({
+                    where: {
+                        topic: {
+                            forumId: forum.id,
+                        },
+                    },
+                    orderBy: {
+                        createdAt: "desc",
+                    },
+                    include: {
+                        author: {
+                            select: {
+                                id: true,
+                                username: true,
+                                role: true,
+                                profilePicture: true,
+                            },
+                        },
+                        topic: {
+                            select: {
+                                id: true,
+                                title: true,
+                            },
+                        },
+                    },
+                });
 
                 return {
                     forum,
                     lastPost: post
                         ? {
-                            _id: post._id,
+                            id: post.id,
                             content: post.content,
                             createdAt: post.createdAt,
-                            topic: { _id: topic._id, title: topic.title },
+                            topic: {
+                                id: post.topic.id,
+                                title: post.topic.title,
+                            },
                             author: post.author,
                         }
                         : null,
@@ -103,34 +163,134 @@ router.get("/latest-posts", async (req, res) => {
 
 router.get("/:id/topics", async (req, res) => {
     try {
-        const topics = await Topic.find({ forum: req.params.id })
-            .populate("author", "username role profilePicture")
-            .sort({ sticky:-1, createdAt: -1 });
+        const topics = await prisma.topic.findMany({
+            where: {
+                forumId: req.params.id,
+            },
+            orderBy: [
+                { sticky: "desc" },
+                { createdAt: "desc" },
+            ],
+            include: {
+                author: {
+                    select: {
+                        id: true,
+                        username: true,
+                        role: true,
+                        profilePicture: true,
+                    },
+                },
+            },
+        });
+
         res.json(topics);
     } catch (err) {
         console.error("Error fetching topics:", err);
         res.status(500).json({ error: "Server error" });
     }
 });
+
 router.get("/:id", async (req, res) => {
     try {
-        const forum = await Forum.findById(req.params.id);
-        if (!forum) return res.status(404).json({ error: "Forum not found" });
+        const forum = await prisma.forum.findUnique({
+            where: {
+                id: req.params.id,
+            },
+        });
+
+        if (!forum) {
+            return res.status(404).json({ error: "Forum not found" });
+        }
+
         res.json(forum);
     } catch (err) {
         console.error("Error fetching forum:", err);
         res.status(500).json({ error: "Server error" });
     }
 });
+
 router.post("/", authRequired, async (req, res) => {
     if (req.user.role !== "admin") {
         return res.status(403).json({ error: "Forbidden" });
     }
+
     try {
-        const forum = await Forum.create(req.body);
+        const {
+            name,
+            description,
+            categoryId,
+            type,
+            redirectUrl,
+        } = req.body;
+
+        if (!name?.trim()) {
+            return res.status(400).json({
+                error: "Forum name is required",
+            });
+        }
+
+        if (!categoryId) {
+            return res.status(400).json({
+                error: "Category is required",
+            });
+        }
+
+        if (type === "redirect" && !redirectUrl?.trim()) {
+            return res.status(400).json({
+                error: "Redirect URL is required",
+            });
+        }
+
+        const lastForum = await prisma.forum.findFirst({
+            where: {
+                categoryId,
+            },
+            orderBy: {
+                order: "desc",
+            },
+        });
+
+        const forum = await prisma.forum.create({
+            data: {
+                name: name.trim(),
+                description: description?.trim() || null,
+                categoryId,
+                order: lastForum ? lastForum.order + 1 : 0,
+
+                type: type || "discussion",
+
+                redirectUrl:
+                    type === "redirect"
+                        ? redirectUrl.trim()
+                        : null,
+            },
+        });
+
         res.status(201).json(forum);
     } catch (err) {
-        res.status(400).json({ error: err.message });
+        console.error("Error creating forum:", err);
+
+        res.status(400).json({
+            error: err.message,
+        });
+    }
+});
+router.delete("/:id", authRequired, async (req, res) => {
+    if (req.user.role !== "admin") {
+        return res.status(403).json({ error: "Forbidden" });
+    }
+
+    try {
+        await prisma.forum.delete({
+            where: {
+                id: req.params.id,
+            },
+        });
+
+        res.json({ message: "Forum deleted" });
+    } catch (err) {
+        console.error("Error deleting forum:", err);
+        res.status(500).json({ error: "Server error" });
     }
 });
 

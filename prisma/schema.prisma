@@ -1,0 +1,113 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  user
+  admin
+}
+enum ForumType {
+  discussion
+  redirect
+}
+model User {
+  id             String   @id @default(uuid())
+  username       String   @unique
+  email          String   @unique
+  passwordHash   String
+  profilePicture String   @default("")
+  role           Role     @default(user)
+  online         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  lastSeen       DateTime @default(now())
+
+  topics   Topic[]
+  posts    Post[]
+  sessions Session[]
+
+  @@index([username])
+  @@index([email])
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  forums Forum[]
+}
+
+model Forum {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  type        ForumType @default(discussion)
+  redirectUrl String?
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  topics Topic[]
+
+  @@index([categoryId])
+}
+
+model Topic {
+  id        String   @id @default(uuid())
+  title     String
+  sticky    Boolean  @default(false)
+  closed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  forumId String
+  forum   Forum @relation(fields: [forumId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  posts Post[]
+
+  @@index([forumId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model Post {
+  id        String   @id @default(uuid())
+  content   String
+  createdAt DateTime @default(now())
+
+  topicId String
+  topic   Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model Session {
+  id         String   @id @default(uuid())
+  sessionId  String   @unique
+  ip         String?
+  userAgent  String?
+  location   String?
+  lastActive DateTime @default(now())
+
+  userId String?
+  user   User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}

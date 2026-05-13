@@ -1,15 +1,23 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+import { prisma } from "../db/prisma.js";
 import { authRequired } from "../middleware/auth.js";
 
 const router = Router();
+
 router.get("/latest", async (req, res) => {
   try {
-    const latestUser = await User.findOne()
-      .sort({ createdAt: -1 })
-      .select("username role profilePicture createdAt");
+    const latestUser = await prisma.user.findFirst({
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        username: true,
+        role: true,
+        profilePicture: true,
+        createdAt: true,
+      },
+    });
 
     if (!latestUser) {
       return res.status(404).json({ error: "No users found" });
@@ -21,15 +29,17 @@ router.get("/latest", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
 router.get("/count", async (req, res) => {
   try {
-    const count = await User.countDocuments();
+    const count = await prisma.user.count();
     res.json({ count });
   } catch (err) {
     console.error("Error counting users:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 router.post("/change-password", authRequired, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -38,19 +48,26 @@ router.post("/change-password", authRequired, async (req, res) => {
       return res.status(400).json({ error: "All fields are required." });
     }
 
-    const user = await User.findById(req.user.id);
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+    });
+
     if (!user) {
       return res.status(404).json({ error: "User not found." });
     }
 
     const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+
     if (!isMatch) {
       return res.status(400).json({ error: "Current password is incorrect." });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    user.passwordHash = await bcrypt.hash(newPassword, salt);
-    await user.save();
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { passwordHash },
+    });
 
     res.json({ message: "Password updated successfully ✅" });
   } catch (err) {
@@ -62,47 +79,77 @@ router.post("/change-password", authRequired, async (req, res) => {
 router.post("/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
+
     if (!username || !email || !password) {
       return res.status(400).json({ error: "Missing fields" });
     }
 
-    const exists = await User.findOne({ $or: [{ email }, { username }] });
-    if (exists) return res.status(400).json({ error: "User already exists" });
+    const exists = await prisma.user.findFirst({
+      where: {
+        OR: [{ email }, { username }],
+      },
+    });
+
+    if (exists) {
+      return res.status(400).json({ error: "User already exists" });
+    }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await User.create({ username, email, passwordHash });
 
-    res.status(201).json({ id: user._id, username: user.username });
+    const user = await prisma.user.create({
+      data: {
+        username,
+        email,
+        passwordHash,
+      },
+    });
+
+    res.status(201).json({
+      id: user.id,
+      username: user.username,
+    });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
 });
+
 router.post("/login", async (req, res) => {
-  const { identifier, password } = req.body;
-
-  const user = await User.findOne({
-    $or: [{ email: identifier }, { username: identifier }],
-  });
-
-  if (!user) return res.status(400).json({ error: "Invalid credentials" });
-
-  const valid = await bcrypt.compare(password, user.passwordHash);
-  if (!valid) return res.status(400).json({ error: "Invalid credentials" });
-
   try {
+    const { identifier, password } = req.body;
+
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [{ email: identifier }, { username: identifier }],
+      },
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: "Invalid credentials" });
+    }
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+
+    if (!valid) {
+      return res.status(400).json({ error: "Invalid credentials" });
+    }
+
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: user.id, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: "2d" }
     );
 
     res.json({
       token,
-      user: { id: user._id, username: user.username, role: user.role },
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+      },
     });
   } catch (err) {
-    console.error("JWT error:", err);
-    res.status(500).json({ error: "Token generation failed" });
+    console.error("Login error:", err);
+    res.status(500).json({ error: "Login failed" });
   }
 });
 

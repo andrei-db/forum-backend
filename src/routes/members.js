@@ -1,22 +1,39 @@
 import { Router } from "express";
-import User from "../models/User.js";
-import Post from "../models/Post.js";
+import { prisma } from "../db/prisma.js";
+
 const router = Router();
 
 router.get("/:username", async (req, res) => {
   try {
-    const member = await User.findOne({ username: req.params.username })
-      .select("_id username email profilePicture role createdAt lastSeen");
+    const member = await prisma.user.findUnique({
+      where: {
+        username: req.params.username,
+      },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        profilePicture: true,
+        role: true,
+        createdAt: true,
+        lastSeen: true,
+        _count: {
+          select: {
+            posts: true,
+          },
+        },
+      },
+    });
 
     if (!member) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const postsCount = await Post.countDocuments({ author: member._id });
+    const { _count, ...userData } = member;
 
     res.json({
-      ...member.toObject(),
-      postsCount,
+      ...userData,
+      postsCount: _count.posts,
     });
   } catch (err) {
     console.error("Error fetching user by username:", err);

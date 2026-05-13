@@ -1,65 +1,128 @@
 import { Router } from "express";
-import Post from "../models/Post.js";
+import { prisma } from "../db/prisma.js";
 import { authRequired } from "../middleware/auth.js";
-import User from "../models/User.js";
+
 const router = Router();
+
 router.get("/top", async (req, res) => {
   try {
-    const stats = await Post.aggregate([
-      { $group: { _id: "$author", posts: { $sum: 1 } } },
-      { $sort: { posts: -1 } },
-      { $limit: 5 },
-    ]);
+    const stats = await prisma.post.groupBy({
+      by: ["authorId"],
+      _count: {
+        id: true,
+      },
+      orderBy: {
+        _count: {
+          id: "desc",
+        },
+      },
+      take: 5,
+    });
 
-    const users = await User.populate(stats, { path: "_id", select: "username profilePicture role" });
+    const users = await prisma.user.findMany({
+      where: {
+        id: {
+          in: stats.map((s) => s.authorId),
+        },
+      },
+      select: {
+        id: true,
+        username: true,
+        profilePicture: true,
+        role: true,
+      },
+    });
 
-    res.json(users.map(u => ({
-      user: u._id,
-      posts: u.posts
-    })));
+    const usersMap = new Map(users.map((user) => [user.id, user]));
+
+    const result = stats.map((s) => ({
+      user: usersMap.get(s.authorId),
+      posts: s._count.id,
+    }));
+
+    res.json(result);
   } catch (err) {
     console.error("Error building leaderboard:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
-router.get("/recent", async (req, res) => {
-    try {
-        const posts = await Post.find()
-            .populate("author", "username role profilePicture")
-            .populate("topic", "title")
-            .sort({ createdAt: -1 })
-            .limit(4);
 
-        res.json(posts);
-    } catch (err) {
-        console.error("Error fetching recent posts:", err);
-        res.status(500).json({ error: "Server error" });
-    }
+router.get("/recent", async (req, res) => {
+  try {
+    const posts = await prisma.post.findMany({
+      take: 4,
+      orderBy: {
+        createdAt: "desc",
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            username: true,
+            role: true,
+            profilePicture: true,
+          },
+        },
+        topic: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
+    });
+
+    res.json(posts);
+  } catch (err) {
+    console.error("Error fetching recent posts:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
+
 router.get("/count", async (req, res) => {
   try {
-    const count = await Post.countDocuments();
+    const count = await prisma.post.count();
+
     res.json({ count });
   } catch (err) {
     console.error("Error counting posts:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 router.post("/", authRequired, async (req, res) => {
   try {
-    const { topic, content } = req.body;
+    const { topic, topicId, content } = req.body;
 
-    if (!topic || !content) {
+    const finalTopicId = topicId || topic;
+
+    if (!finalTopicId || !content) {
       return res.status(400).json({ error: "Missing fields" });
     }
 
-    const post = await Post.create({
-      topic,
-      content,
-      author: req.user.id,
+    const post = await prisma.post.create({
+      data: {
+        topicId: finalTopicId,
+        content,
+        authorId: req.user.id,
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            username: true,
+            role: true,
+            profilePicture: true,
+          },
+        },
+        topic: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
     });
-
-    await post.populate("author", "username role profilePicture");
 
     res.status(201).json(post);
   } catch (err) {
@@ -70,17 +133,45 @@ router.post("/", authRequired, async (req, res) => {
 
 router.put("/:id", authRequired, async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).json({ error: "Post not found" });
+    const existingPost = await prisma.post.findUnique({
+      where: {
+        id: req.params.id,
+      },
+    });
 
-    if (post.author.toString() !== req.user.id && req.user.role !== "admin") {
+    if (!existingPost) {
+      return res.status(404).json({ error: "Post not found" });
+    }
+
+    if (existingPost.authorId !== req.user.id && req.user.role !== "admin") {
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    post.content = req.body.content || post.content;
-    await post.save();
+    const post = await prisma.post.update({
+      where: {
+        id: req.params.id,
+      },
+      data: {
+        content: req.body.content || existingPost.content,
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            username: true,
+            role: true,
+            profilePicture: true,
+          },
+        },
+        topic: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
+    });
 
-    await post.populate("author", "username role profilePicture");
     res.json(post);
   } catch (err) {
     console.error("Error editing post:", err);
@@ -90,18 +181,31 @@ router.put("/:id", authRequired, async (req, res) => {
 
 router.delete("/:id", authRequired, async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).json({ error: "Post not found" });
+    const post = await prisma.post.findUnique({
+      where: {
+        id: req.params.id,
+      },
+    });
 
-    if (post.author.toString() !== req.user.id && req.user.role !== "admin") {
+    if (!post) {
+      return res.status(404).json({ error: "Post not found" });
+    }
+
+    if (post.authorId !== req.user.id && req.user.role !== "admin") {
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    await post.deleteOne();
+    await prisma.post.delete({
+      where: {
+        id: req.params.id,
+      },
+    });
+
     res.json({ success: true });
   } catch (err) {
     console.error("Error deleting post:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 export default router;

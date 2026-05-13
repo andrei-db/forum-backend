@@ -1,6 +1,5 @@
 import "dotenv/config";
 import express from "express";
-import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
 import path from "path";
@@ -14,6 +13,7 @@ import topicRoutes from "./routes/topics.js";
 import postRoutes from "./routes/posts.js";
 import memberRoutes from './routes/members.js'
 import onlineRoutes from './routes/online.js'
+import homeRoutes from "./routes/home.js"
 import cookieParser from "cookie-parser";
 import { sessionTracker } from "./middleware/sessionTracker.js";
 
@@ -43,11 +43,9 @@ app.use("/topics", topicRoutes);
 app.use("/posts", postRoutes);
 app.use("/members", memberRoutes);
 app.use("/online", onlineRoutes);
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log("Connected to MongoDB");
-    app.listen(process.env.PORT || 4000, () => {
-      console.log(`Server running`);
-    });
-  })
-  .catch(err => console.error("DB connection error:", err.message));
+app.use("/home", homeRoutes);
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

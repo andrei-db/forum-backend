@@ -1,39 +1,67 @@
 import { Router } from "express";
-import Topic from "../models/Topic.js";
-import Post from "../models/Post.js";
+import { prisma } from "../db/prisma.js";
 import { authRequired } from "../middleware/auth.js";
 
 const router = Router();
-router.patch("/:id/sticky",authRequired, async (req, res) => {
+
+router.patch("/:id/sticky", authRequired, async (req, res) => {
   try {
-    const topic = await Topic.findById(req.params.id);
-    if (!topic) return res.status(404).json({ error: "Topic not found" });
+    const existingTopic = await prisma.topic.findUnique({
+      where: { id: req.params.id },
+    });
 
-    topic.sticky = !topic.sticky;
-    await topic.save();
+    if (!existingTopic) {
+      return res.status(404).json({ error: "Topic not found" });
+    }
 
-    res.json({ message: `Topic is now ${topic.sticky ? "sticky" : "normal"}`, topic });
+    const topic = await prisma.topic.update({
+      where: { id: req.params.id },
+      data: {
+        sticky: !existingTopic.sticky,
+      },
+    });
+
+    res.json({
+      message: `Topic is now ${topic.sticky ? "sticky" : "normal"}`,
+      topic,
+    });
   } catch (err) {
+    console.error("Sticky error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
-router.patch("/:id/closed",authRequired, async (req, res) => {
+
+router.patch("/:id/closed", authRequired, async (req, res) => {
   try {
-    const topic = await Topic.findById(req.params.id);
-    if (!topic) return res.status(404).json({ error: "Topic not found" });
+    const existingTopic = await prisma.topic.findUnique({
+      where: { id: req.params.id },
+    });
 
-    topic.closed = !topic.closed;
-    await topic.save();
+    if (!existingTopic) {
+      return res.status(404).json({ error: "Topic not found" });
+    }
 
-    res.json({ message: `Topic is now ${topic.closed ? "closed" : "open"}`, topic });
+    const topic = await prisma.topic.update({
+      where: { id: req.params.id },
+      data: {
+        closed: !existingTopic.closed,
+      },
+    });
+
+    res.json({
+      message: `Topic is now ${topic.closed ? "closed" : "open"}`,
+      topic,
+    });
   } catch (err) {
+    console.error("Closed error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
 router.get("/count", async (req, res) => {
   try {
-    const count = await Topic.countDocuments();
+    const count = await prisma.topic.count();
+
     res.json({ count });
   } catch (err) {
     console.error("Error counting topics:", err);
@@ -42,61 +70,116 @@ router.get("/count", async (req, res) => {
 });
 
 router.get("/recent", async (req, res) => {
-    try {
-        const topics = await Topic.find()
-            .populate("author", "username role profilePicture")
-            .sort({ createdAt: -1 })
-            .limit(4);
+  try {
+    const topics = await prisma.topic.findMany({
+      take: 4,
+      orderBy: {
+        createdAt: "desc",
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            username: true,
+            role: true,
+            profilePicture: true,
+          },
+        },
+      },
+    });
 
-        res.json(topics);
-    } catch (err) {
-        console.error("Error fetching recent topics:", err);
-        res.status(500).json({ error: "Server error" });
-    }
+    res.json(topics);
+  } catch (err) {
+    console.error("Error fetching recent topics:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
+
 router.get("/:id", async (req, res) => {
-    try {
-        const topic = await Topic.findById(req.params.id)
-            .populate("author", "username role profilePicture")
-            .lean();
+  try {
+    const topic = await prisma.topic.findUnique({
+      where: {
+        id: req.params.id,
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            username: true,
+            role: true,
+            profilePicture: true,
+          },
+        },
+        posts: {
+          orderBy: {
+            createdAt: "asc",
+          },
+          include: {
+            author: {
+              select: {
+                id: true,
+                username: true,
+                role: true,
+                profilePicture: true,
+                createdAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
 
-        if (!topic) {
-            return res.status(404).json({ error: "Topic not found" });
-        }
-
-        const posts = await Post.find({ topic: topic._id })
-            .populate("author", "username role profilePicture createdAt")
-            .sort({ createdAt: 1 });
-
-        res.json({ ...topic, posts });
-    } catch (err) {
-        console.error("Error fetching topic:", err);
-        res.status(500).json({ error: "Server error" });
+    if (!topic) {
+      return res.status(404).json({ error: "Topic not found" });
     }
-});
 
+    res.json(topic);
+  } catch (err) {
+    console.error("Error fetching topic:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 router.post("/", authRequired, async (req, res) => {
-    try {
-        const { forum, title, content } = req.body;
+  try {
+    const { forum, forumId, title, content } = req.body;
 
-        const topic = await Topic.create({
-            forum,
-            title,
-            author: req.user.id,
-        });
+    const finalForumId = forumId || forum;
 
-        await Post.create({
-            topic: topic._id,
-            content,
-            author: req.user.id,
-        });
-
-        res.status(201).json(topic);
-    } catch (err) {
-        console.error("Error creating topic:", err);
-        res.status(400).json({ error: err.message });
+    if (!finalForumId || !title || !content) {
+      return res.status(400).json({ error: "Missing fields" });
     }
+
+    const topic = await prisma.topic.create({
+      data: {
+        forumId: finalForumId,
+        title,
+        authorId: req.user.id,
+        posts: {
+          create: {
+            content,
+            authorId: req.user.id,
+          },
+        },
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            username: true,
+            role: true,
+            profilePicture: true,
+          },
+        },
+        posts: true,
+      },
+    });
+
+    res.status(201).json(topic);
+  } catch (err) {
+    console.error("Error creating topic:", err);
+    res.status(400).json({ error: err.message });
+  }
 });
 
 export default router;
