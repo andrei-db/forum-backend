@@ -4,31 +4,31 @@ import { authRequired } from "../middleware/auth.js";
 
 const router = Router();
 router.patch("/reorder", authRequired, async (req, res) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  try {
-    const { forums } = req.body;
-
-    if (!Array.isArray(forums)) {
-      return res.status(400).json({ error: "Invalid forums order" });
+    if (req.user.role !== "admin") {
+        return res.status(403).json({ error: "Forbidden" });
     }
 
-    await prisma.$transaction(
-      forums.map((forum, index) =>
-        prisma.forum.update({
-          where: { id: forum.id },
-          data: { order: index },
-        })
-      )
-    );
+    try {
+        const { forums } = req.body;
 
-    res.json({ message: "Forums reordered" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
-  }
+        if (!Array.isArray(forums)) {
+            return res.status(400).json({ error: "Invalid forums order" });
+        }
+
+        await prisma.$transaction(
+            forums.map((forum, index) =>
+                prisma.forum.update({
+                    where: { id: forum.id },
+                    data: { order: index },
+                })
+            )
+        );
+
+        res.json({ message: "Forums reordered" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
 });
 router.get("/:id/topics-with-last-reply", async (req, res) => {
     try {
@@ -220,6 +220,9 @@ router.get("/:id", async (req, res) => {
     try {
         const forum = await prisma.forum.findUnique({
             where: { id: req.params.id },
+            include: {
+                category: true,
+            },
         });
 
         if (!forum) {
@@ -317,39 +320,39 @@ router.delete("/:id", authRequired, async (req, res) => {
     }
 });
 router.patch("/:id", authRequired, async (req, res) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  try {
-    const { name, description, categoryId, type, redirectUrl, order } = req.body;
-
-    if (!name?.trim()) {
-      return res.status(400).json({ error: "Forum name is required" });
+    if (req.user.role !== "admin") {
+        return res.status(403).json({ error: "Forbidden" });
     }
 
-    if (!categoryId) {
-      return res.status(400).json({ error: "Category is required" });
+    try {
+        const { name, description, categoryId, type, redirectUrl, order } = req.body;
+
+        if (!name?.trim()) {
+            return res.status(400).json({ error: "Forum name is required" });
+        }
+
+        if (!categoryId) {
+            return res.status(400).json({ error: "Category is required" });
+        }
+
+        if (type === "redirect" && !redirectUrl?.trim()) {
+            return res.status(400).json({ error: "Redirect URL is required" });
+        }
+
+        const forum = await prisma.forum.update({
+            where: { id: req.params.id },
+            data: {
+                name: name.trim(),
+                description: description?.trim() || null,
+                categoryId,
+                type: type || "discussion",
+                redirectUrl: type === "redirect" ? redirectUrl.trim() : null
+            },
+        });
+
+        res.json(forum);
+    } catch (err) {
+        res.status(500).json({ error: err.message || "Server error" });
     }
-
-    if (type === "redirect" && !redirectUrl?.trim()) {
-      return res.status(400).json({ error: "Redirect URL is required" });
-    }
-
-    const forum = await prisma.forum.update({
-      where: { id: req.params.id },
-      data: {
-        name: name.trim(),
-        description: description?.trim() || null,
-        categoryId,
-        type: type || "discussion",
-        redirectUrl: type === "redirect" ? redirectUrl.trim() : null
-      },
-    });
-
-    res.json(forum);
-  } catch (err) {
-    res.status(500).json({ error: err.message || "Server error" });
-  }
 });
 export default router;
