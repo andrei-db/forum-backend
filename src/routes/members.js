@@ -89,6 +89,26 @@ router.post("/", authRequired, async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
+router.delete("/:id", authRequired, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  try {
+    if (req.user.id === req.params.id) {
+      return res.status(400).json({ error: "You cannot delete yourself" });
+    }
+
+    await prisma.user.delete({
+      where: { id: req.params.id },
+    });
+
+    res.json({ message: "Member deleted" });
+  } catch (err) {
+    console.error("Error deleting member:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 router.get("/:username", async (req, res) => {
   try {
     const member = await prisma.user.findUnique({
