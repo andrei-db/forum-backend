@@ -1,12 +1,10 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma.js";
-import { authRequired } from "../middleware/auth.js";
+import { authRequired } from "../middleware/authRequired.js";
+import { requireStaff } from "../middleware/requireStaff.js";
 
 const router = Router();
-router.patch("/reorder", authRequired, async (req, res) => {
-    if (req.user.role !== "admin") {
-        return res.status(403).json({ error: "Forbidden" });
-    }
+router.patch("/reorder", authRequired, requireStaff, async (req, res) => {
 
     try {
         const { forums } = req.body;
@@ -45,7 +43,15 @@ router.get("/:id/topics-with-last-reply", async (req, res) => {
                     select: {
                         id: true,
                         username: true,
-                        role: true,
+                        group: {
+                            select: {
+                                id: true,
+                                name: true,
+                                slug: true,
+                                color: true,
+                                isStaff: true,
+                            },
+                        },
                         profilePicture: true,
                     },
                 },
@@ -59,7 +65,15 @@ router.get("/:id/topics-with-last-reply", async (req, res) => {
                             select: {
                                 id: true,
                                 username: true,
-                                role: true,
+                                group: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        slug: true,
+                                        color: true,
+                                        isStaff: true,
+                                    },
+                                },
                                 profilePicture: true,
                             },
                         },
@@ -149,7 +163,15 @@ router.get("/latest-posts", async (req, res) => {
                             select: {
                                 id: true,
                                 username: true,
-                                role: true,
+                                group: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        slug: true,
+                                        color: true,
+                                        isStaff: true,
+                                    },
+                                },
                                 profilePicture: true,
                             },
                         },
@@ -202,7 +224,15 @@ router.get("/:id/topics", async (req, res) => {
                     select: {
                         id: true,
                         username: true,
-                        role: true,
+                        group: {
+                            select: {
+                                id: true,
+                                name: true,
+                                slug: true,
+                                color: true,
+                                isStaff: true,
+                            },
+                        },
                         profilePicture: true,
                     },
                 },
@@ -235,10 +265,7 @@ router.get("/:id", async (req, res) => {
     }
 });
 
-router.post("/", authRequired, async (req, res) => {
-    if (req.user.role !== "admin") {
-        return res.status(403).json({ error: "Forbidden" });
-    }
+router.post("/", authRequired, requireStaff, async (req, res) => {
 
     try {
         const {
@@ -301,10 +328,7 @@ router.post("/", authRequired, async (req, res) => {
         });
     }
 });
-router.delete("/:id", authRequired, async (req, res) => {
-    if (req.user.role !== "admin") {
-        return res.status(403).json({ error: "Forbidden" });
-    }
+router.delete("/:id", authRequired, requireStaff, async (req, res) => {
 
     try {
         await prisma.forum.delete({
@@ -319,10 +343,7 @@ router.delete("/:id", authRequired, async (req, res) => {
         res.status(500).json({ error: "Server error" });
     }
 });
-router.patch("/:id", authRequired, async (req, res) => {
-    if (req.user.role !== "admin") {
-        return res.status(403).json({ error: "Forbidden" });
-    }
+router.patch("/:id", authRequired, requireStaff, async (req, res) => {
 
     try {
         const { name, description, categoryId, type, redirectUrl, order } = req.body;

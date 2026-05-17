@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma.js";
-import { authRequired } from "../middleware/auth.js";
+import { authRequired } from "../middleware/authRequired.js";
 import bcrypt from "bcrypt";
+import { requireStaff } from "../middleware/requireStaff.js";
 const router = Router();
 router.get("/", async (req, res) => {
   try {
@@ -14,7 +15,15 @@ router.get("/", async (req, res) => {
         username: true,
         email: true,
         profilePicture: true,
-        role: true,
+        group: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            color: true,
+            isStaff: true,
+          },
+        },
         createdAt: true,
         lastSeen: true,
         online: true,
@@ -39,13 +48,11 @@ router.get("/", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-router.post("/", authRequired, async (req, res) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Forbidden" });
-  }
+router.post("/", authRequired, requireStaff, async (req, res) => {
+
 
   try {
-    const { username, email, password, role } = req.body;
+    const { username, email, password, groupId } = req.body;
 
     if (!username?.trim() || !email?.trim() || !password?.trim()) {
       return res.status(400).json({ error: "Missing fields" });
@@ -65,19 +72,30 @@ router.post("/", authRequired, async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const defaultGroup = await prisma.group.findFirst({
+      where: { isDefault: true },
+    });
 
     const user = await prisma.user.create({
       data: {
         username: username.trim(),
         email: email.trim(),
         passwordHash,
-        role: role === "admin" ? "admin" : "user",
+        groupId: groupId || defaultGroup?.id,
       },
       select: {
         id: true,
         username: true,
         email: true,
-        role: true,
+        group: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            color: true,
+            isStaff: true,
+          },
+        },
         profilePicture: true,
         createdAt: true,
       },
@@ -89,10 +107,8 @@ router.post("/", authRequired, async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
-router.delete("/:id", authRequired, async (req, res) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Forbidden" });
-  }
+router.delete("/:id", authRequired, requireStaff, async (req, res) => {
+
 
   try {
     if (req.user.id === req.params.id) {
@@ -109,6 +125,95 @@ router.delete("/:id", authRequired, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+router.get("/id/:id", authRequired, requireStaff, async (req, res) => {
+
+  try {
+    const member = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        group: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            color: true,
+            isStaff: true,
+          },
+        },
+        profilePicture: true,
+        online: true,
+        createdAt: true,
+        lastSeen: true,
+        _count: {
+          select: {
+            posts: true,
+            topics: true,
+          },
+        },
+      },
+    });
+
+    if (!member) {
+      return res.status(404).json({ error: "Member not found" });
+    }
+
+    res.json({
+      ...member,
+      postsCount: member._count.posts,
+      topicsCount: member._count.topics,
+    });
+  } catch (err) {
+    console.error("Error fetching member:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+router.patch("/id/:id", authRequired, requireStaff, async (req, res) => {
+
+  try {
+    const { username, email, groupId, profilePicture, password } = req.body;
+    const data = {};
+
+    if (username?.trim()) data.username = username.trim();
+    if (email?.trim()) data.email = email.trim();
+    if (profilePicture !== undefined) data.profilePicture = profilePicture.trim();
+    if (groupId) data.groupId = groupId;
+
+    if (password?.trim()) {
+      data.passwordHash = await bcrypt.hash(password.trim(), 10);
+    }
+
+    const member = await prisma.user.update({
+      where: { id: req.params.id },
+      data,
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        group: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            color: true,
+            isStaff: true,
+          },
+        },
+        profilePicture: true,
+        createdAt: true,
+        lastSeen: true,
+        online: true,
+      },
+    });
+
+    res.json(member);
+  } catch (err) {
+    console.error("Error updating member:", err);
+    res.status(400).json({ error: err.message });
+  }
+});
 router.get("/:username", async (req, res) => {
   try {
     const member = await prisma.user.findUnique({
@@ -120,7 +225,15 @@ router.get("/:username", async (req, res) => {
         username: true,
         email: true,
         profilePicture: true,
-        role: true,
+        group: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            color: true,
+            isStaff: true,
+          },
+        },
         createdAt: true,
         lastSeen: true,
         _count: {

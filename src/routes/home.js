@@ -2,7 +2,13 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma.js";
 const router = Router();
-
+const groupSelect = {
+    id: true,
+    name: true,
+    slug: true,
+    color: true,
+    isStaff: true,
+};
 router.get("/", async (req, res) => {
     try {
         const [
@@ -37,7 +43,9 @@ router.get("/", async (req, res) => {
                         select: {
                             username: true,
                             profilePicture: true,
-                            role: true,
+                            group: {
+                                select: groupSelect,
+                            },
                         },
                     },
                 },
@@ -51,7 +59,9 @@ router.get("/", async (req, res) => {
                         select: {
                             username: true,
                             profilePicture: true,
-                            role: true,
+                            group: {
+                                select: groupSelect,
+                            },
                         },
                     },
                     topic: {
@@ -84,7 +94,9 @@ router.get("/", async (req, res) => {
                         select: {
                             username: true,
                             profilePicture: true,
-                            role: true,
+                            group: {
+                                select: groupSelect,
+                            },
                         },
                     },
                     topic: {
@@ -119,7 +131,9 @@ router.get("/", async (req, res) => {
                 id: true,
                 username: true,
                 profilePicture: true,
-                role: true,
+                group: {
+                    select: groupSelect,
+                },
             },
         });
 

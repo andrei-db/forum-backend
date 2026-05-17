@@ -14,16 +14,31 @@ enum ForumType {
   discussion
   redirect
 }
+model Group {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  slug        String   @unique
+  color       String   @default("text-neutral-300")
+  description String?
+  isDefault   Boolean  @default(false)
+  isStaff     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users User[]
+}
 model User {
   id             String   @id @default(uuid())
   username       String   @unique
   email          String   @unique
   passwordHash   String
   profilePicture String   @default("")
-  role           Role     @default(user)
   online         Boolean  @default(false)
   createdAt      DateTime @default(now())
   lastSeen       DateTime @default(now())
+
+  groupId String?
+  group   Group? @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
   topics   Topic[]
   posts    Post[]

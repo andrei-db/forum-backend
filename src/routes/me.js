@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authRequired } from "../middleware/auth.js";
+import { authRequired } from "../middleware/authRequired.js";
 import { prisma } from "../db/prisma.js";
 import { storage } from "../config/cloudinary.js";
 import multer from "multer";
@@ -24,9 +24,18 @@ router.post("/profile-picture", authRequired, upload.single("image"), async (req
         id: true,
         username: true,
         email: true,
-        role: true,
         profilePicture: true,
         createdAt: true,
+        group: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            color: true,
+            isStaff: true,
+            isDefault: true
+          },
+        },
       },
     });
 
@@ -47,9 +56,18 @@ router.get("/", authRequired, async (req, res) => {
         id: true,
         username: true,
         email: true,
-        role: true,
         profilePicture: true,
         createdAt: true,
+        group: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            color: true,
+            isStaff: true,
+            isDefault: true
+          },
+        },
       },
     });
 

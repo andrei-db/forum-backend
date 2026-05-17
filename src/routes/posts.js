@@ -1,9 +1,24 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma.js";
-import { authRequired } from "../middleware/auth.js";
+import { authRequired } from "../middleware/authRequired.js";
 
 const router = Router();
+const groupSelect = {
+  id: true,
+  name: true,
+  slug: true,
+  color: true,
+  isStaff: true,
+};
 
+async function getCurrentUser(id) {
+  return prisma.user.findUnique({
+    where: { id },
+    include: {
+      group: true,
+    },
+  });
+}
 router.get("/top", async (req, res) => {
   try {
     const stats = await prisma.post.groupBy({
@@ -29,7 +44,9 @@ router.get("/top", async (req, res) => {
         id: true,
         username: true,
         profilePicture: true,
-        role: true,
+        group: {
+          select: groupSelect,
+        },
       },
     });
 
@@ -59,7 +76,9 @@ router.get("/recent", async (req, res) => {
           select: {
             id: true,
             username: true,
-            role: true,
+            group: {
+              select: groupSelect,
+            },
             profilePicture: true,
           },
         },
@@ -124,7 +143,9 @@ router.post("/", authRequired, async (req, res) => {
             select: {
               id: true,
               username: true,
-              role: true,
+              group: {
+                select: groupSelect,
+              },
               profilePicture: true,
               createdAt: true,
             },
@@ -170,9 +191,12 @@ router.put("/:id", authRequired, async (req, res) => {
       return res.status(404).json({ error: "Post not found" });
     }
 
-    if (existingPost.authorId !== req.user.id && req.user.role !== "admin") {
+    const currentUser = await getCurrentUser(req.user.id);
+
+    if (existingPost.authorId !== req.user.id && !currentUser?.group?.isStaff) {
       return res.status(403).json({ error: "Forbidden" });
     }
+
 
     const post = await prisma.post.update({
       where: {
@@ -186,7 +210,9 @@ router.put("/:id", authRequired, async (req, res) => {
           select: {
             id: true,
             username: true,
-            role: true,
+            group: {
+              select: groupSelect,
+            },
             profilePicture: true,
           },
         },
@@ -224,7 +250,9 @@ router.delete("/:id", authRequired, async (req, res) => {
       });
     }
 
-    if (req.user.role !== "admin" && req.user.id !== post.authorId) {
+    const currentUser = await getCurrentUser(req.user.id);
+
+    if (req.user.id !== post.authorId && !currentUser?.group?.isStaff) {
       return res.status(403).json({ error: "Not allowed" });
     }
 

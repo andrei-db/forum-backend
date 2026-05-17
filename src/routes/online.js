@@ -19,7 +19,15 @@ router.get("/", async (req, res) => {
             id: true,
             username: true,
             profilePicture: true,
-            role: true,
+            group: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                color: true,
+                isStaff: true,
+              },
+            },
           },
         },
       },

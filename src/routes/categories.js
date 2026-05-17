@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma.js";
-import { authRequired } from "../middleware/auth.js";
+import { authRequired } from "../middleware/authRequired.js";
+import { requireStaff } from "../middleware/requireStaff.js";
 const router = Router();
 
 router.get("/", async (req, res) => {
@@ -24,7 +25,7 @@ router.get("/", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-router.post("/", async (req, res) => {
+router.post("/",authRequired,requireStaff, async (req, res) => {
   try {
     const { name, description } = req.body;
 
@@ -57,11 +58,7 @@ router.post("/", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-router.patch("/reorder", authRequired, async (req, res) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
+router.patch("/reorder", authRequired, requireStaff, async (req, res) => {
   try {
     const { categories } = req.body;
 
@@ -84,7 +81,7 @@ router.patch("/reorder", authRequired, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authRequired,requireStaff, async (req, res) => {
   try {
     await prisma.category.delete({
       where: {
@@ -117,10 +114,7 @@ router.get("/:id", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-router.patch("/:id", authRequired, async (req, res) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Forbidden" });
-  }
+router.patch("/:id", authRequired,requireStaff, async (req, res) => {
 
   try {
     const { name, description, order } = req.body;

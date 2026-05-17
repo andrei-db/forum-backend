@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { prisma } from "../db/prisma.js";
-import { authRequired } from "../middleware/auth.js";
+import { authRequired } from "../middleware/authRequired.js";
 
 const router = Router();
 
@@ -13,7 +13,6 @@ router.get("/latest", async (req, res) => {
       select: {
         id: true,
         username: true,
-        role: true,
         profilePicture: true,
         createdAt: true,
       },
@@ -75,7 +74,6 @@ router.post("/change-password", authRequired, async (req, res) => {
     res.status(500).json({ error: "Server error." });
   }
 });
-
 router.post("/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
@@ -94,6 +92,16 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "User already exists" });
     }
 
+    const defaultGroup = await prisma.group.findFirst({
+      where: {
+        isDefault: true,
+      },
+    });
+
+    if (!defaultGroup) {
+      return res.status(500).json({ error: "Default group not found" });
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
 
     const user = await prisma.user.create({
@@ -101,12 +109,17 @@ router.post("/register", async (req, res) => {
         username,
         email,
         passwordHash,
+        groupId: defaultGroup.id,
+      },
+      include: {
+        group: true,
       },
     });
 
     res.status(201).json({
       id: user.id,
       username: user.username,
+      group: user.group,
     });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -121,6 +134,9 @@ router.post("/login", async (req, res) => {
       where: {
         OR: [{ email: identifier }, { username: identifier }],
       },
+      include: {
+        group: true,
+      },
     });
 
     if (!user) {
@@ -134,7 +150,7 @@ router.post("/login", async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user.id, role: user.role },
+      { id: user.id },
       process.env.JWT_SECRET,
       { expiresIn: "2d" }
     );
@@ -144,7 +160,8 @@ router.post("/login", async (req, res) => {
       user: {
         id: user.id,
         username: user.username,
-        role: user.role,
+        profilePicture: user.profilePicture,
+        group: user.group,
       },
     });
   } catch (err) {

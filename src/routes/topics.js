@@ -1,10 +1,17 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma.js";
-import { authRequired } from "../middleware/auth.js";
+import { authRequired } from "../middleware/authRequired.js";
+import { requireStaff } from "../middleware/requireStaff.js";
 
 const router = Router();
-
-router.patch("/:id/sticky", authRequired, async (req, res) => {
+const groupSelect = {
+    id: true,
+    name: true,
+    slug: true,
+    color: true,
+    isStaff: true,
+};
+router.patch("/:id/sticky", authRequired, requireStaff, async (req, res) => {
     try {
         const existingTopic = await prisma.topic.findUnique({
             where: { id: req.params.id },
@@ -31,7 +38,7 @@ router.patch("/:id/sticky", authRequired, async (req, res) => {
     }
 });
 
-router.patch("/:id/closed", authRequired, async (req, res) => {
+router.patch("/:id/closed", authRequired, requireStaff, async (req, res) => {
     try {
         const existingTopic = await prisma.topic.findUnique({
             where: { id: req.params.id },
@@ -81,7 +88,9 @@ router.get("/recent", async (req, res) => {
                     select: {
                         id: true,
                         username: true,
-                        role: true,
+                        group: {
+                            select: groupSelect,
+                        },
                         profilePicture: true,
                     },
                 },
@@ -112,7 +121,9 @@ router.get("/:id", async (req, res) => {
                     select: {
                         id: true,
                         username: true,
-                        role: true,
+                        group: {
+                            select: groupSelect,
+                        },
                         profilePicture: true,
                     },
                 },
@@ -125,7 +136,9 @@ router.get("/:id", async (req, res) => {
                             select: {
                                 id: true,
                                 username: true,
-                                role: true,
+                                group: {
+                                    select: groupSelect,
+                                },
                                 profilePicture: true,
                                 createdAt: true,
                             },
@@ -194,7 +207,9 @@ router.post("/", authRequired, async (req, res) => {
                         select: {
                             id: true,
                             username: true,
-                            role: true,
+                            group: {
+                                select: groupSelect,
+                            },
                             profilePicture: true,
                         },
                     },
