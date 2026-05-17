@@ -303,21 +303,39 @@ router.post("/", authRequired, requireStaff, async (req, res) => {
             },
         });
 
-        const forum = await prisma.forum.create({
-            data: {
-                name: name.trim(),
-                description: description?.trim() || null,
-                categoryId,
-                order: lastForum ? lastForum.order + 1 : 0,
+        const result = await prisma.$transaction(async (tx) => {
+            const forum = await tx.forum.create({
+                data: {
+                    name: name.trim(),
+                    description: description?.trim() || null,
+                    categoryId,
+                    order: lastForum ? lastForum.order + 1 : 0,
+                    type: type || "discussion",
+                    redirectUrl: type === "redirect" ? redirectUrl.trim() : null,
+                },
+            });
 
-                type: type || "discussion",
+            const groups = await tx.group.findMany();
 
-                redirectUrl:
-                    type === "redirect"
-                        ? redirectUrl.trim()
-                        : null,
-            },
+            await tx.groupForumPermission.createMany({
+                data: groups.map((group) => {
+                    const isBanned = group.slug === "banned";
+
+                    return {
+                        groupId: group.id,
+                        forumId: forum.id,
+                        canView: !isBanned,
+                        canRead: !isBanned,
+                        canPostTopic: !isBanned,
+                        canReply: !isBanned,
+                    };
+                }),
+            });
+
+            return forum;
         });
+
+        res.status(201).json(result);
 
         res.status(201).json(forum);
     } catch (err) {

@@ -67,6 +67,106 @@ router.get("/:id", authRequired, requireStaff, async (req, res) => {
         res.status(500).json({ error: "Server error" });
     }
 });
+router.get("/:id/forum-permissions", authRequired, requireStaff, async (req, res) => {
+  try {
+    const group = await prisma.group.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+      },
+    });
+
+    if (!group) {
+      return res.status(404).json({ error: "Group not found" });
+    }
+
+    const categories = await prisma.category.findMany({
+      orderBy: { order: "asc" },
+      include: {
+        forums: {
+          orderBy: { order: "asc" },
+          include: {
+            groupPermissions: {
+              where: {
+                groupId: req.params.id,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const data = categories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      forums: category.forums.map((forum) => {
+        const permission = forum.groupPermissions[0];
+
+        return {
+          id: forum.id,
+          name: forum.name,
+          permissions: {
+            canView: permission?.canView || false,
+            canRead: permission?.canRead || false,
+            canPostTopic: permission?.canPostTopic || false,
+            canReply: permission?.canReply || false,
+          },
+        };
+      }),
+    }));
+
+    res.json({
+      group,
+      categories: data,
+    });
+  } catch (err) {
+    console.error("Get group permissions error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+router.put("/:id/forum-permissions", authRequired, requireStaff, async (req, res) => {
+  try {
+    const { permissions } = req.body;
+
+    if (!Array.isArray(permissions)) {
+      return res.status(400).json({ error: "Invalid permissions" });
+    }
+
+    await prisma.$transaction(
+      permissions.map((item) =>
+        prisma.groupForumPermission.upsert({
+          where: {
+            groupId_forumId: {
+              groupId: req.params.id,
+              forumId: item.forumId,
+            },
+          },
+          update: {
+            canView: Boolean(item.canView),
+            canRead: Boolean(item.canRead),
+            canPostTopic: Boolean(item.canPostTopic),
+            canReply: Boolean(item.canReply),
+          },
+          create: {
+            groupId: req.params.id,
+            forumId: item.forumId,
+            canView: Boolean(item.canView),
+            canRead: Boolean(item.canRead),
+            canPostTopic: Boolean(item.canPostTopic),
+            canReply: Boolean(item.canReply),
+          },
+        })
+      )
+    );
+
+    res.json({ message: "Permissions updated" });
+  } catch (err) {
+    console.error("Update group permissions error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 router.post("/", authRequired, requireStaff, async (req, res) => {
     try {
         const {

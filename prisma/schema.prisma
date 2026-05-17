@@ -10,10 +10,12 @@ enum Role {
   user
   admin
 }
+
 enum ForumType {
   discussion
   redirect
 }
+
 model Group {
   id          String   @id @default(uuid())
   name        String   @unique
@@ -25,8 +27,28 @@ model Group {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  forumPermissions GroupForumPermission[]
+
   users User[]
 }
+
+model GroupForumPermission {
+  id String @id @default(uuid())
+
+  groupId String
+  forumId String
+
+  canView      Boolean @default(false)
+  canRead      Boolean @default(false)
+  canPostTopic Boolean @default(false)
+  canReply     Boolean @default(false)
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  forum Forum @relation(fields: [forumId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, forumId])
+}
+
 model User {
   id             String   @id @default(uuid())
   username       String   @unique
@@ -38,7 +60,7 @@ model User {
   lastSeen       DateTime @default(now())
 
   groupId String?
-  group   Group? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  group   Group?  @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
   topics   Topic[]
   posts    Post[]
@@ -71,10 +93,13 @@ model Forum {
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
+  groupPermissions GroupForumPermission[]
+
   topics Topic[]
 
   @@index([categoryId])
 }
+
 model Topic {
   id        String   @id @default(uuid())
   title     String
@@ -84,14 +109,14 @@ model Topic {
   updatedAt DateTime @updatedAt
 
   forumId String
-  forum   Forum @relation(fields: [forumId], references: [id], onDelete: Cascade)
+  forum   Forum  @relation(fields: [forumId], references: [id], onDelete: Cascade)
 
   authorId String
-  author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   postsCount  Int     @default(0)
   firstPostId String? @unique
-  lastPostId String? @unique
+  lastPostId  String? @unique
 
   posts Post[]
 
@@ -104,6 +129,7 @@ model Topic {
   @@index([firstPostId])
   @@index([lastPostId])
 }
+
 model Post {
   id        String   @id @default(uuid())
   content   String
@@ -111,10 +137,10 @@ model Post {
   updatedAt DateTime @updatedAt
 
   topicId String
-  topic   Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  topic   Topic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
 
   authorId String
-  author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   firstForTopic Topic? @relation("TopicFirstPost")
   lastForTopic  Topic? @relation("TopicLastPost")
@@ -123,6 +149,7 @@ model Post {
   @@index([authorId])
   @@index([createdAt])
 }
+
 model Session {
   id         String   @id @default(uuid())
   sessionId  String   @unique
@@ -132,7 +159,7 @@ model Session {
   lastActive DateTime @default(now())
 
   userId String?
-  user   User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
 }
