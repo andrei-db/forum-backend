@@ -1,6 +1,7 @@
 
 import { Router } from "express";
 import { prisma } from "../db/prisma.js";
+import { optionalAuth } from "../middleware/optionalAuth.js";
 const router = Router();
 const groupSelect = {
     id: true,
@@ -9,12 +10,10 @@ const groupSelect = {
     color: true,
     isStaff: true,
 };
-router.get("/", async (req, res) => {
+router.get("/", optionalAuth, async (req, res) => {
     try {
         const [
             categories,
-            recentTopics,
-            recentPosts,
             topPosters,
             latestPostsRaw,
             messagesCountRaw,
@@ -30,44 +29,6 @@ router.get("/", async (req, res) => {
                                     topics: true,
                                 },
                             },
-                        },
-                    },
-                },
-            }),
-
-            prisma.topic.findMany({
-                take: 5,
-                orderBy: { createdAt: "desc" },
-                include: {
-                    author: {
-                        select: {
-                            username: true,
-                            profilePicture: true,
-                            group: {
-                                select: groupSelect,
-                            },
-                        },
-                    },
-                },
-            }),
-
-            prisma.post.findMany({
-                take: 5,
-                orderBy: { createdAt: "desc" },
-                include: {
-                    author: {
-                        select: {
-                            username: true,
-                            profilePicture: true,
-                            group: {
-                                select: groupSelect,
-                            },
-                        },
-                    },
-                    topic: {
-                        select: {
-                            id: true,
-                            title: true,
                         },
                     },
                 },
@@ -171,12 +132,122 @@ router.get("/", async (req, res) => {
             messagesCount: item._count.id,
         }));
 
+        let allowedForumIds = new Set();
+
+        if (req.user?.id) {
+            const user = await prisma.user.findUnique({
+                where: { id: req.user.id },
+                select: {
+                    groupId: true,
+                    group: {
+                        select: {
+                            isStaff: true,
+                        },
+                    },
+                },
+            });
+
+            if (user?.group?.isStaff) {
+                allowedForumIds = new Set(
+                    categories.flatMap((category) =>
+                        category.forums.map((forum) => forum.id)
+                    )
+                );
+            } else if (user?.groupId) {
+                const permissions = await prisma.groupForumPermission.findMany({
+                    where: {
+                        groupId: user.groupId,
+                        canView: true,
+                    },
+                    select: {
+                        forumId: true,
+                    },
+                });
+
+                allowedForumIds = new Set(permissions.map((p) => p.forumId));
+            }
+        }
+
+        const filteredCategories = categories
+            .map((category) => ({
+                ...category,
+                forums: category.forums.filter((forum) =>
+                    allowedForumIds.has(forum.id)
+                ),
+            }))
+            .filter((category) => category.forums.length > 0);
+
+        const visibleForumIds = new Set(
+            filteredCategories.flatMap((category) =>
+                category.forums.map((forum) => forum.id)
+            )
+        );
+
+        const recentTopics = await prisma.topic.findMany({
+            take: 5,
+            where: {
+                forumId: {
+                    in: Array.from(visibleForumIds),
+                },
+            },
+            orderBy: {
+                createdAt: "desc",
+            },
+            include: {
+                author: {
+                    select: {
+                        username: true,
+                        profilePicture: true,
+                        group: {
+                            select: groupSelect,
+                        },
+                    },
+                },
+            },
+        });
+
+        const recentPosts = await prisma.post.findMany({
+            take: 5,
+            where: {
+                topic: {
+                    forumId: {
+                        in: Array.from(visibleForumIds),
+                    },
+                },
+            },
+            orderBy: {
+                createdAt: "desc",
+            },
+            include: {
+                author: {
+                    select: {
+                        username: true,
+                        profilePicture: true,
+                        group: {
+                            select: groupSelect,
+                        },
+                    },
+                },
+                topic: {
+                    select: {
+                        id: true,
+                        title: true,
+                        forumId: true,
+                    },
+                },
+            },
+        });
+
+        const filteredLatestPosts = Array.from(latestPostsMap.values()).filter((item) =>
+            visibleForumIds.has(item.forum.id)
+        );
+
         res.json({
-            categories,
+            categories: filteredCategories,
             topics: recentTopics,
             posts: recentPosts,
+            latestPosts: filteredLatestPosts,
             topPosters: topPostersFormatted,
-            latestPosts: Array.from(latestPostsMap.values()),
             messagesCount,
         });
     } catch (err) {

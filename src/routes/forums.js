@@ -2,6 +2,12 @@ import { Router } from "express";
 import { prisma } from "../db/prisma.js";
 import { authRequired } from "../middleware/authRequired.js";
 import { requireStaff } from "../middleware/requireStaff.js";
+import { optionalAuth } from "../middleware/optionalAuth.js";
+import {
+    canReadForum,
+    canViewForum,
+    getForumPermission,
+} from "../utils/forumPermissions.js";
 
 const router = Router();
 router.patch("/reorder", authRequired, requireStaff, async (req, res) => {
@@ -28,8 +34,25 @@ router.patch("/reorder", authRequired, requireStaff, async (req, res) => {
         res.status(500).json({ error: "Server error" });
     }
 });
-router.get("/:id/topics-with-last-reply", async (req, res) => {
+router.get("/:id/topics-with-last-reply", optionalAuth, async (req, res) => {
     try {
+
+        const canView = await canViewForum(req, req.params.id);
+
+        if (!canView) {
+            return res.status(403).json({
+                error: "You do not have permission to view this forum",
+            });
+        }
+
+        const canRead = await canReadForum(req, req.params.id);
+
+        if (!canRead) {
+            return res.status(403).json({
+                error: "You do not have permission to read this forum",
+            });
+        }
+
         const topics = await prisma.topic.findMany({
             where: {
                 forumId: req.params.id,
@@ -209,8 +232,24 @@ router.get("/latest-posts", async (req, res) => {
     }
 });
 
-router.get("/:id/topics", async (req, res) => {
+router.get("/:id/topics", optionalAuth, async (req, res) => {
     try {
+        const canView = await canViewForum(req, req.params.id);
+
+        if (!canView) {
+            return res.status(403).json({
+                error: "You do not have permission to view this forum",
+            });
+        }
+
+        const canRead = await canReadForum(req, req.params.id);
+
+        if (!canRead) {
+            return res.status(403).json({
+                error: "You do not have permission to read this forum",
+            });
+        }
+
         const topics = await prisma.topic.findMany({
             where: {
                 forumId: req.params.id,
@@ -246,7 +285,7 @@ router.get("/:id/topics", async (req, res) => {
     }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", optionalAuth, async (req, res) => {
     try {
         const forum = await prisma.forum.findUnique({
             where: { id: req.params.id },
@@ -259,7 +298,34 @@ router.get("/:id", async (req, res) => {
             return res.status(404).json({ error: "Forum not found" });
         }
 
-        res.json(forum);
+        const allowed = await canViewForum(req, forum.id);
+
+        if (!allowed) {
+            return res.status(403).json({
+                error: "You do not have permission to view this forum",
+            });
+        }
+
+        const canRead = await canReadForum(req, forum.id);
+
+        if (!canRead) {
+            return res.status(403).json({
+                error: "You can see this forum, but you do not have permission to read its topics",
+            });
+        }
+
+        let permissions = null;
+
+        if (req.user?.id) {
+            const access = await getForumPermission(req.user.id, forum.id);
+
+            permissions = access?.permission || null;
+        }
+
+        res.json({
+            ...forum,
+            permissions,
+        });
     } catch (err) {
         res.status(500).json({ error: "Server error" });
     }
@@ -337,7 +403,6 @@ router.post("/", authRequired, requireStaff, async (req, res) => {
 
         res.status(201).json(result);
 
-        res.status(201).json(forum);
     } catch (err) {
         console.error("Error creating forum:", err);
 

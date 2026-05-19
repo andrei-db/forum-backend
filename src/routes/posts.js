@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma.js";
 import { authRequired } from "../middleware/authRequired.js";
-
+import { canReplyForum } from "../utils/forumPermissions.js";
 const router = Router();
 const groupSelect = {
   id: true,
@@ -108,6 +108,7 @@ router.get("/count", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
 router.post("/", authRequired, async (req, res) => {
   try {
     const { topic, topicId, content } = req.body;
@@ -119,19 +120,27 @@ router.post("/", authRequired, async (req, res) => {
       return res.status(400).json({ error: "Missing fields" });
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const existingTopic = await tx.topic.findUnique({
-        where: { id: finalTopicId },
+    const existingTopic = await prisma.topic.findUnique({
+      where: { id: finalTopicId },
+    });
+
+    if (!existingTopic) {
+      return res.status(404).json({ error: "Topic not found" });
+    }
+
+    if (existingTopic.closed) {
+      return res.status(400).json({ error: "Topic is closed" });
+    }
+
+    const allowed = await canReplyForum(req, existingTopic.forumId);
+
+    if (!allowed) {
+      return res.status(403).json({
+        error: "You do not have permission to reply",
       });
+    }
 
-      if (!existingTopic) {
-        throw new Error("Topic not found");
-      }
-
-      if (existingTopic.closed) {
-        throw new Error("Topic is closed");
-      }
-
+    const result = await prisma.$transaction(async (tx) => {
       const post = await tx.post.create({
         data: {
           topicId: finalTopicId,

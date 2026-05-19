@@ -2,7 +2,8 @@ import { Router } from "express";
 import { prisma } from "../db/prisma.js";
 import { authRequired } from "../middleware/authRequired.js";
 import { requireStaff } from "../middleware/requireStaff.js";
-
+import { canPostTopic, getForumPermission } from "../utils/forumPermissions.js";
+import { optionalAuth } from "../middleware/optionalAuth.js";
 const router = Router();
 const groupSelect = {
     id: true,
@@ -104,7 +105,7 @@ router.get("/recent", async (req, res) => {
     }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", optionalAuth, async (req, res) => {
     try {
         const topic = await prisma.topic.findUnique({
             where: {
@@ -152,7 +153,18 @@ router.get("/:id", async (req, res) => {
             return res.status(404).json({ error: "Topic not found" });
         }
 
-        res.json(topic);
+        let permissions = null;
+
+        if (req.user?.id) {
+            const access = await getForumPermission(req.user.id, topic.forumId);
+
+            permissions = access?.permission || null;
+        }
+
+        res.json({
+            ...topic,
+            permissions,
+        });
     } catch (err) {
         console.error("Error fetching topic:", err);
         res.status(500).json({ error: "Server error" });
@@ -166,6 +178,14 @@ router.post("/", authRequired, async (req, res) => {
         const cleanTitle = title?.trim();
         const cleanContent = content?.trim();
 
+        const allowed = await canPostTopic(req, finalForumId);
+
+        if (!allowed) {
+            return res.status(403).json({
+                error: "You do not have permission to create topics in this forum",
+            });
+        }
+
         if (!finalForumId || !cleanTitle || !cleanContent || !req.user?.id) {
             return res.status(400).json({
                 error: "Missing fields",
@@ -177,6 +197,8 @@ router.post("/", authRequired, async (req, res) => {
                 },
             });
         }
+
+
 
         const result = await prisma.$transaction(async (tx) => {
             const topic = await tx.topic.create({
