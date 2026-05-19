@@ -16,6 +16,7 @@ import onlineRoutes from './routes/online.js'
 import homeRoutes from "./routes/home.js"
 import groupRoutes from "./routes/groups.js"
 import adminDashboardRoutes from "./routes/adminDashboard.js";
+import settingsRoutes from "./routes/settings.js";
 import cookieParser from "cookie-parser";
 import { sessionTracker } from "./middleware/sessionTracker.js";
 
@@ -48,6 +49,7 @@ app.use("/online", onlineRoutes);
 app.use("/home", homeRoutes);
 app.use("/groups", groupRoutes )
 app.use("/dashboard-data", adminDashboardRoutes);
+app.use("/settings", settingsRoutes);
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
