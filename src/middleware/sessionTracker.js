@@ -1,20 +1,20 @@
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
 import { prisma } from "../db/prisma.js";
-
 export async function sessionTracker(req, res, next) {
   try {
+    console.log("SESSION TRACKER HIT:", req.method, req.originalUrl);
     let sessionId = req.cookies.sessionId;
+    console.log("COOKIE SESSION:", sessionId);
 
     if (!sessionId) {
-      sessionId = uuidv4();
+      sessionId = randomUUID();
 
       res.cookie("sessionId", sessionId, {
         httpOnly: true,
         sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-        maxAge: 1000 * 60 * 60 * 24,
+        secure: false,
+        maxAge: 1000 * 60 * 60 * 24 * 30,
       });
     }
 
@@ -22,40 +22,38 @@ export async function sessionTracker(req, res, next) {
 
     const authHeader = req.headers.authorization;
 
-    if (authHeader) {
-      try {
-        const token = authHeader.split(" ")[1];
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
 
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         userId = decoded.id;
-      } catch (err) {}
+      } catch {
+        userId = null;
+      }
     }
 
-    const ip = req.ip || req.connection.remoteAddress;
-    const ua = req.get("user-agent") || "unknown";
-
     await prisma.session.upsert({
-      where: {
-        sessionId,
-      },
+      where: { sessionId },
       update: {
         userId,
-        ip,
-        userAgent: ua,
-        lastActive: new Date(),
+        ip: req.ip,
+        userAgent: req.headers["user-agent"] || "",
+        currentPath: req.originalUrl,
+        lastActivity: new Date(),
       },
       create: {
         sessionId,
         userId,
-        ip,
-        userAgent: ua,
-        lastActive: new Date(),
+        ip: req.ip,
+        userAgent: req.headers["user-agent"] || "",
+        currentPath: req.originalUrl,
+        lastActivity: new Date(),
       },
     });
-
-    next();
   } catch (err) {
-    console.error("Session tracker error:", err);
-    next();
+    console.log("Session tracker error:", err.message);
   }
+
+  next();
 }

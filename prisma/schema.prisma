@@ -151,16 +151,18 @@ model Post {
 }
 
 model Session {
-  id         String   @id @default(uuid())
-  sessionId  String   @unique
-  ip         String?
-  userAgent  String?
-  location   String?
-  lastActive DateTime @default(now())
+  id           String   @id @default(uuid())
+  sessionId    String   @unique
+  userId       String?
+  ip           String?
+  userAgent    String?
+  currentPath  String?
+  lastActivity DateTime @default(now())
+  createdAt    DateTime @default(now())
 
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  @@index([lastActivity])
   @@index([userId])
 }
 

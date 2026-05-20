@@ -5,15 +5,18 @@ const router = Router();
 
 router.get("/", async (req, res) => {
   try {
-    const cutoff = new Date(Date.now() - 2 * 60 * 1000);
+    const activeSince = new Date(Date.now() - 1000 * 60 * 15);
 
     const sessions = await prisma.session.findMany({
       where: {
-        lastActive: {
-          gt: cutoff,
+        lastActivity: {
+          gte: activeSince,
         },
       },
-      include: {
+      select: {
+        userId: true,
+        currentPath: true,
+        lastActivity: true,
         user: {
           select: {
             id: true,
@@ -31,26 +34,37 @@ router.get("/", async (req, res) => {
           },
         },
       },
+      orderBy: {
+        lastActivity: "desc",
+      },
     });
 
-    const memberMap = new Map();
+    const membersMap = new Map();
+    let guestsCount = 0;
 
-    sessions.forEach((s) => {
-      if (s.user) {
-        memberMap.set(s.user.id, {
-          ...s.user,
+    for (const session of sessions) {
+      if (session.user) {
+        membersMap.set(session.user.id, {
+          ...session.user,
+          currentPath: session.currentPath,
+          lastActivity: session.lastActivity,
         });
+      } else {
+        guestsCount++;
       }
+    }
+
+    const members = Array.from(membersMap.values());
+
+    res.json({
+      members,
+      membersCount: members.length,
+      guestsCount,
+      totalOnline: members.length + guestsCount,
     });
-
-    const members = Array.from(memberMap.values());
-
-    const guests = sessions.filter((s) => !s.user).length;
-
-    res.json({ members, guests });
   } catch (err) {
-    console.error("Error fetching online users:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error("Online error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
